@@ -3,7 +3,6 @@ package hr.fer.rgkk.transactions;
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.core.NetworkParameters;
 import org.bitcoinj.core.Transaction;
-import org.bitcoinj.core.Utils;
 import org.bitcoinj.crypto.TransactionSignature;
 import org.bitcoinj.script.Script;
 import org.bitcoinj.script.ScriptBuilder;
@@ -41,8 +40,44 @@ public class CoinToss extends ScriptTransaction {
 
     @Override
     public Script createLockingScript() {
-        // TODO: Create Locking script
-        throw new UnsupportedOperationException();
+        return new ScriptBuilder()                      // Stack = aliceNonce | bobNonce | signature |
+
+                .op(OP_DUP)                             // Stack = aliceNonce | aliceNonce | bobNonce | signature |
+                .op(OP_HASH160)                         // Stack = aliceNonceHash | aliceNonce | bobNonce | signature |
+                .data(aliceNonce)                       // Stack = aliceNonce | aliceNonceHash | aliceNonce | bobNonce | signature |
+                .op(OP_HASH160)                         // Stack = aliceNonceHash | aliceNonceHash | aliceNonce | bobNonce | signature |
+                .op(OP_EQUALVERIFY)                     // Stack = aliceNonce | bobNonce | signature |
+
+                .op(OP_SWAP)                            // Stack = bobNonce | aliceNonce | signature |
+                .op(OP_DUP)                             // Stack = bobNonce | bobNonce | aliceNonce | signature |
+                .op(OP_HASH160)                         // Stack = bobNonceHash | bobNonce | aliceNonce | signature |
+                .data(bobNonce)                         // Stack = bobNonce | bobNonceHash | bobNonce | aliceNonce | signature |
+                .op(OP_HASH160)                         // Stack = bobNonceHash | bobNonceHash | bobNonce | aliceNonce | signature |
+                .op(OP_EQUALVERIFY)                     // Stack = bobNonce | aliceNonce | signature |
+
+                .op(OP_SIZE)                            // Stack = bobNonceSize | bobNonce | aliceNonce | signature |
+                .op(OP_NIP)                             // Stack = bobNonceSize | aliceNonce | signature |
+                .op(OP_SWAP)                            // Stack = aliceNonce | bobNonceSize | signature |
+                .op(OP_SIZE)                            // Stack = aliceNonceSize | aliceNonce | bobNonceSize | signature |
+                .op(OP_NIP)                             // Stack = aliceNonceSize | bobNonceSize | signature |
+
+                .smallNum(16)                           // Stack = 16 | aliceNonceSize | bobNonceSize | signature |
+                .op(OP_SUB)                             // Stack = alicePick | bobNonceSize | signature |
+                .op(OP_SWAP)                            // Stack = bobNonceSize | alicePick | signature |
+                .smallNum(16)                           // Stack = 16 | bobNonceSize | alicePick | signature |
+                .op(OP_SUB)                             // Stack = bobPick | alicePick | signature |
+
+                .op(OP_BOOLOR)                          // Stack = result | signature |
+
+                .op(OP_IF)
+                .data(bobKey.getPubKey())
+                .op(OP_ELSE)
+                .data(aliceKey.getPubKey())
+                .op(OP_ENDIF)
+
+                .op(OP_CHECKSIG)
+
+                .build();
     }
 
     @Override
